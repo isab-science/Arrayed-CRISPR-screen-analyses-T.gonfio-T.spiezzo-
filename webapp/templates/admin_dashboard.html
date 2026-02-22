@@ -38,7 +38,6 @@
         </div>
         <div class="header-row">
           <a class="btn btn-primary" href="/">Open Analysis Interface</a>
-          <a class="btn btn-secondary" href="/admin/access-requests">Open Approval Queue</a>
           <form action="/auth/logout" method="post" style="margin:0;">
             <button type="submit" class="btn btn-secondary">Log out</button>
           </form>
@@ -49,6 +48,7 @@
     <section class="card">
       <h2 class="section-title">Recorded Analytics</h2>
       <p class="muted" style="margin-top:0;">These metrics reflect data currently recorded in the application database.</p>
+      <p class="muted" style="margin-top:0;">All timestamps on this page use Switzerland time (Europe/Zurich).</p>
       <div class="metrics">
         <div class="metric"><span class="k">Total users</span><span class="v">{{ analytics.total_users }}</span></div>
         <div class="metric"><span class="k">Active users</span><span class="v">{{ analytics.active_users }}</span></div>
@@ -166,6 +166,60 @@
           </tr>
           {% else %}
           <tr><td colspan="6" class="muted">No denied users.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2 class="section-title">Pending Access Requests</h2>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>User ID</th><th>Email</th><th>Requested At</th><th>Note</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for r in pending_access_requests %}
+          <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.requested_by_username or r.username or '' }}</td>
+            <td>{{ r.email or '' }}</td>
+            <td>{{ r.requested_at or '' }}</td>
+            <td style="white-space:pre-wrap;">{{ r.note or '' }}</td>
+            <td>
+              <form class="inline-form" action="/admin/access-requests/{{ r.id }}/approve" method="post">
+                <button class="action-btn action-promote" type="submit">Approve</button>
+              </form>
+              <form class="inline-form" action="/admin/access-requests/{{ r.id }}/reject" method="post">
+                <button class="action-btn action-block" type="submit">Reject</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="muted">No pending access requests.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2 class="section-title">All Access Requests</h2>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>User ID</th><th>Email</th><th>Status</th><th>Requested At</th><th>Decided At</th><th>Decided By</th></tr>
+        </thead>
+        <tbody>
+          {% for r in all_access_requests %}
+          <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.requested_by_username or r.username or '' }}</td>
+            <td>{{ r.email or '' }}</td>
+            <td>{{ r.status or '' }}</td>
+            <td>{{ r.requested_at or '' }}</td>
+            <td>{{ r.decided_at or '' }}</td>
+            <td>{{ r.decided_by or '' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="muted">No access requests found.</td></tr>
           {% endfor %}
         </tbody>
       </table>

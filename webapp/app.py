@@ -18,6 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Form, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -65,6 +66,7 @@ PUBLIC_USER_ID_MAX_LENGTH = 48
 PUBLIC_USER_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 PRIMARY_ADMIN_USERNAME = os.getenv("PRPCSCREEN_PRIMARY_ADMIN_USER", "aag").strip() or "aag"
 PRIMARY_ADMIN_EMAIL = os.getenv("PRPCSCREEN_PRIMARY_ADMIN_EMAIL", "adriano.aguzzi@isab.science").strip().lower()
+SWISS_TZ = ZoneInfo("Europe/Zurich")
 
 
 def _default_data_root() -> str:
@@ -465,6 +467,31 @@ def _email_recipients(*emails: str) -> list[str]:
             continue
         seen.add(clean)
         out.append(clean)
+    return out
+
+
+def _to_swiss_display(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    candidate = raw.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(candidate)
+    except ValueError:
+        return raw
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(SWISS_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _apply_swiss_time_fields(records: list[dict[str, Any]], fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        row = dict(rec)
+        for field in fields:
+            if field in row:
+                row[field] = _to_swiss_display(row.get(field))
+        out.append(row)
     return out
 
 
@@ -1072,20 +1099,8 @@ def admin_access_requests(request: Request) -> HTMLResponse:
     user = _session_user(request)
     if not user or str(user.get("status") or "").strip().lower() != "approved":
         return RedirectResponse(url="/auth/login", status_code=303)
-    user = _require_primary_admin(request)
-    pending = metadata_store.list_access_requests(status="pending", limit=500)
-    decided = metadata_store.list_access_requests(limit=50)
-    return templates.TemplateResponse(
-        request=request,
-        name="admin_access_requests.html",
-        context={
-            "user": user,
-            "pending_requests": pending,
-            "recent_requests": decided,
-            "error": "",
-            "notice": "",
-        },
-    )
+    _require_primary_admin(request)
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
 @app.post("/admin/access-requests/{request_id}/approve")
@@ -1104,7 +1119,7 @@ def admin_approve_access_request(request_id: int, request: Request) -> RedirectR
             "Your account has been approved. You can now log in at /auth/login.",
             recipients,
         )
-    return RedirectResponse(url="/admin/access-requests", status_code=303)
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
 @app.post("/admin/access-requests/{request_id}/reject")
@@ -1129,7 +1144,7 @@ def admin_reject_access_request(request_id: int, request: Request) -> RedirectRe
             "Your access request was not approved.",
             recipients,
         )
-    return RedirectResponse(url="/admin/access-requests", status_code=303)
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
 @app.post("/admin/users/block")
@@ -1215,6 +1230,9 @@ def admin_dashboard(request: Request) -> HTMLResponse:
     denied_users = [u for u in users if str(u.get("status") or "").strip().lower() in {"disabled", "rejected"}]
 
     requests = metadata_store.list_access_requests(limit=5000)
+    pending_access_requests = [
+        r for r in requests if str(r.get("status") or "").strip().lower() == "pending"
+    ]
     req_counts = {"pending": 0, "approved": 0, "rejected": 0, "other": 0}
     for req in requests:
         st = str(req.get("status") or "").strip().lower()
@@ -1245,14 +1263,22 @@ def admin_dashboard(request: Request) -> HTMLResponse:
         "tracked_run_statuses": run_counts,
     }
 
+    active_users_view = _apply_swiss_time_fields(active_users, ("approved_at", "created_at"))
+    pending_users_view = _apply_swiss_time_fields(pending_users, ("created_at",))
+    denied_users_view = _apply_swiss_time_fields(denied_users, ("created_at",))
+    pending_access_requests_view = _apply_swiss_time_fields(pending_access_requests, ("requested_at",))
+    access_requests_view = _apply_swiss_time_fields(requests, ("requested_at", "decided_at"))
+
     return templates.TemplateResponse(
         request=request,
         name="admin_dashboard.html",
         context={
             "user": user,
-            "active_users": active_users,
-            "pending_users": pending_users,
-            "denied_users": denied_users,
+            "active_users": active_users_view,
+            "pending_users": pending_users_view,
+            "denied_users": denied_users_view,
+            "pending_access_requests": pending_access_requests_view,
+            "all_access_requests": access_requests_view,
             "analytics": analytics,
         },
     )
