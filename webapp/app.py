@@ -1160,6 +1160,14 @@ def admin_block_user(request: Request, username: str = Form(default="")) -> Redi
     updated = metadata_store.set_user_status_by_username(target, status="rejected", clear_admin=True)
     if not updated:
         raise HTTPException(status_code=404, detail="Target user not found.")
+    blocked_user = metadata_store.get_user_by_username(target) or {}
+    blocked_email = str(blocked_user.get("email") or "").strip()
+    if blocked_email:
+        metadata_store.decide_pending_access_requests_by_email(
+            blocked_email,
+            approve=False,
+            decided_by=str(actor.get("username") or "admin"),
+        )
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
@@ -1230,9 +1238,6 @@ def admin_dashboard(request: Request) -> HTMLResponse:
     denied_users = [u for u in users if str(u.get("status") or "").strip().lower() in {"disabled", "rejected"}]
 
     requests = metadata_store.list_access_requests(limit=5000)
-    pending_access_requests = [
-        r for r in requests if str(r.get("status") or "").strip().lower() == "pending"
-    ]
     req_counts = {"pending": 0, "approved": 0, "rejected": 0, "other": 0}
     for req in requests:
         st = str(req.get("status") or "").strip().lower()
@@ -1266,7 +1271,6 @@ def admin_dashboard(request: Request) -> HTMLResponse:
     active_users_view = _apply_swiss_time_fields(active_users, ("approved_at", "created_at"))
     pending_users_view = _apply_swiss_time_fields(pending_users, ("created_at",))
     denied_users_view = _apply_swiss_time_fields(denied_users, ("created_at",))
-    pending_access_requests_view = _apply_swiss_time_fields(pending_access_requests, ("requested_at",))
     access_requests_view = _apply_swiss_time_fields(requests, ("requested_at", "decided_at"))
 
     return templates.TemplateResponse(
@@ -1277,7 +1281,6 @@ def admin_dashboard(request: Request) -> HTMLResponse:
             "active_users": active_users_view,
             "pending_users": pending_users_view,
             "denied_users": denied_users_view,
-            "pending_access_requests": pending_access_requests_view,
             "all_access_requests": access_requests_view,
             "analytics": analytics,
         },

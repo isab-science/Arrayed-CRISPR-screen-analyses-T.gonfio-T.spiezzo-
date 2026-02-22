@@ -26,6 +26,7 @@
     .action-btn { border:0; border-radius:6px; padding:6px 9px; font-size:12px; font-weight:700; cursor:pointer; }
     .action-promote { background:#0b7285; color:#fff; }
     .action-block { background:#b91c1c; color:#fff; }
+    .action-btn:disabled { opacity: 0.6; cursor: wait; }
   </style>
 </head>
 <body>
@@ -66,7 +67,7 @@
       <pre>{{ analytics.tracked_run_statuses }}</pre>
     </section>
 
-    <section class="card">
+    <section class="card admin-refresh-section" id="active-users-card">
       <h2 class="section-title">Active Users</h2>
       <table>
         <thead>
@@ -82,13 +83,13 @@
             <td>{{ u.created_at or '' }}</td>
             <td>
               {% if not u.is_admin %}
-              <form class="inline-form" action="/admin/users/make-admin" method="post">
+              <form class="inline-form" action="/admin/users/make-admin" method="post" data-async="true">
                 <input type="hidden" name="username" value="{{ u.username }}" />
                 <button class="action-btn action-promote" type="submit">Make admin</button>
               </form>
               {% endif %}
               {% if u.username|lower != user.username|lower and u.username|lower != "aag" %}
-              <form class="inline-form" action="/admin/users/block" method="post">
+              <form class="inline-form" action="/admin/users/block" method="post" data-async="true">
                 <input type="hidden" name="username" value="{{ u.username }}" />
                 <button class="action-btn action-block" type="submit">Block user</button>
               </form>
@@ -104,7 +105,7 @@
       </table>
     </section>
 
-    <section class="card">
+    <section class="card admin-refresh-section" id="pending-users-card">
       <h2 class="section-title">Users With Pending Requests</h2>
       <table>
         <thead>
@@ -119,11 +120,11 @@
             <td>{{ u.created_at or '' }}</td>
             <td>
               {% if u.username|lower != user.username|lower and u.username|lower != "aag" %}
-              <form class="inline-form" action="/admin/users/approve" method="post">
+              <form class="inline-form" action="/admin/users/approve" method="post" data-async="true">
                 <input type="hidden" name="username" value="{{ u.username }}" />
                 <button class="action-btn action-promote" type="submit">Approve user</button>
               </form>
-              <form class="inline-form" action="/admin/users/block" method="post">
+              <form class="inline-form" action="/admin/users/block" method="post" data-async="true">
                 <input type="hidden" name="username" value="{{ u.username }}" />
                 <button class="action-btn action-block" type="submit">Block user</button>
               </form>
@@ -139,7 +140,7 @@
       </table>
     </section>
 
-    <section class="card">
+    <section class="card admin-refresh-section" id="denied-users-card">
       <h2 class="section-title">Users With Denied Requests</h2>
       <table>
         <thead>
@@ -155,7 +156,7 @@
             <td>{{ u.created_at or '' }}</td>
             <td>
               {% if u.username|lower != user.username|lower and u.username|lower != "aag" %}
-              <form class="inline-form" action="/admin/users/restore" method="post">
+              <form class="inline-form" action="/admin/users/restore" method="post" data-async="true">
                 <input type="hidden" name="username" value="{{ u.username }}" />
                 <button class="action-btn action-promote" type="submit">Restore user</button>
               </form>
@@ -171,37 +172,7 @@
       </table>
     </section>
 
-    <section class="card">
-      <h2 class="section-title">Pending Access Requests</h2>
-      <table>
-        <thead>
-          <tr><th>ID</th><th>User ID</th><th>Email</th><th>Requested At</th><th>Note</th><th>Actions</th></tr>
-        </thead>
-        <tbody>
-          {% for r in pending_access_requests %}
-          <tr>
-            <td>{{ r.id }}</td>
-            <td>{{ r.requested_by_username or r.username or '' }}</td>
-            <td>{{ r.email or '' }}</td>
-            <td>{{ r.requested_at or '' }}</td>
-            <td style="white-space:pre-wrap;">{{ r.note or '' }}</td>
-            <td>
-              <form class="inline-form" action="/admin/access-requests/{{ r.id }}/approve" method="post">
-                <button class="action-btn action-promote" type="submit">Approve</button>
-              </form>
-              <form class="inline-form" action="/admin/access-requests/{{ r.id }}/reject" method="post">
-                <button class="action-btn action-block" type="submit">Reject</button>
-              </form>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="6" class="muted">No pending access requests.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section class="card">
+    <section class="card admin-refresh-section" id="all-access-requests-card">
       <h2 class="section-title">All Access Requests</h2>
       <table>
         <thead>
@@ -225,5 +196,80 @@
       </table>
     </section>
   </main>
+  <script>
+    const refreshSectionIds = [
+      "active-users-card",
+      "pending-users-card",
+      "denied-users-card",
+      "all-access-requests-card",
+    ];
+
+    async function refreshAdminSections() {
+      const response = await fetch("/admin/dashboard", {
+        method: "GET",
+        headers: { "X-Requested-With": "fetch" },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to refresh dashboard (${response.status})`);
+      }
+      const html = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      for (const id of refreshSectionIds) {
+        const current = document.getElementById(id);
+        const incoming = doc.getElementById(id);
+        if (current && incoming) {
+          current.replaceWith(incoming);
+        }
+      }
+    }
+
+    async function submitAdminAction(form) {
+      const submitButton = form.querySelector('button[type="submit"]');
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          headers: { "X-Requested-With": "fetch" },
+          credentials: "same-origin",
+          redirect: "follow",
+        });
+        if (!response.ok) {
+          let detail = `Request failed (${response.status})`;
+          const contentType = response.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const payload = await response.json();
+            if (payload && payload.detail) {
+              detail = String(payload.detail);
+            }
+          }
+          throw new Error(detail);
+        }
+        await refreshAdminSections();
+      } catch (error) {
+        const message = (error && error.message) ? error.message : "Action failed.";
+        window.alert(message);
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+        }
+      }
+    }
+
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (form.dataset.async !== "true") {
+        return;
+      }
+      event.preventDefault();
+      submitAdminAction(form);
+    });
+  </script>
 </body>
 </html>

@@ -566,6 +566,27 @@ class MetadataStore:
                 )
         return bool(row and int(row.rowcount or 0) > 0)
 
+    def decide_pending_access_requests_by_email(self, email: str, *, approve: bool, decided_by: str) -> int:
+        clean_email = self._normalized_email(email)
+        actor = (decided_by or "").strip() or "admin"
+        if not clean_email:
+            return 0
+        decided_status = "approved" if approve else "rejected"
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE access_requests
+                SET status = ?,
+                    decided_at = ?,
+                    decided_by = ?
+                WHERE lower(email)=lower(?)
+                  AND lower(COALESCE(status, '')) = 'pending'
+                """,
+                (decided_status, now, actor, clean_email),
+            )
+        return int(row.rowcount or 0)
+
     def create_run(
         self,
         *,
