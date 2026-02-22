@@ -119,6 +119,10 @@
             <td>{{ u.created_at or '' }}</td>
             <td>
               {% if u.username|lower != user.username|lower and u.username|lower != "aag" %}
+              <form class="inline-form" action="/admin/users/approve" method="post">
+                <input type="hidden" name="username" value="{{ u.username }}" />
+                <button class="action-btn action-promote" type="submit">Approve user</button>
+              </form>
               <form class="inline-form" action="/admin/users/block" method="post">
                 <input type="hidden" name="username" value="{{ u.username }}" />
                 <button class="action-btn action-block" type="submit">Block user</button>
@@ -149,7 +153,16 @@
             <td>{{ u.status }}</td>
             <td>{{ u.approved_by or '' }}</td>
             <td>{{ u.created_at or '' }}</td>
-            <td><span class="muted">No action</span></td>
+            <td>
+              {% if u.username|lower != user.username|lower and u.username|lower != "aag" %}
+              <form class="inline-form" action="/admin/users/restore" method="post">
+                <input type="hidden" name="username" value="{{ u.username }}" />
+                <button class="action-btn action-promote" type="submit">Restore user</button>
+              </form>
+              {% else %}
+              <span class="muted">No action</span>
+              {% endif %}
+            </td>
           </tr>
           {% else %}
           <tr><td colspan="6" class="muted">No denied users.</td></tr>

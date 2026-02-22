@@ -528,6 +528,44 @@ class MetadataStore:
                 )
         return bool(row and int(row.rowcount or 0) > 0)
 
+    def approve_user_by_username(self, username: str, *, approved_by: str) -> bool:
+        clean = (username or "").strip()
+        actor = (approved_by or "").strip() or "admin"
+        if not clean:
+            return False
+        now = _utc_now_iso()
+        with self._lock, self._connect() as conn:
+            user = conn.execute(
+                "SELECT email FROM users WHERE lower(username)=lower(?) LIMIT 1",
+                (clean,),
+            ).fetchone()
+            if user is None:
+                return False
+            row = conn.execute(
+                """
+                UPDATE users
+                SET status = 'approved',
+                    approved_at = ?,
+                    approved_by = ?
+                WHERE lower(username)=lower(?)
+                """,
+                (now, actor, clean),
+            )
+            email = str(user["email"] or "").strip().lower()
+            if email:
+                conn.execute(
+                    """
+                    UPDATE access_requests
+                    SET status = 'approved',
+                        decided_at = ?,
+                        decided_by = ?
+                    WHERE lower(email)=lower(?)
+                      AND lower(COALESCE(status, '')) = 'pending'
+                    """,
+                    (now, actor, email),
+                )
+        return bool(row and int(row.rowcount or 0) > 0)
+
     def create_run(
         self,
         *,

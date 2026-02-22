@@ -423,6 +423,10 @@ def _send_email(subject: str, body: str, to_addrs: list[str], html_body: str | N
                     check=False,
                 )
                 if proc.returncode == 0:
+                    print(
+                        f"[auth-email] sendmail ok: subject={subject!r} to={','.join(to_addrs)}",
+                        file=sys.stderr,
+                    )
                     return True
                 print(f"[auth-email] sendmail failed rc={proc.returncode}: {proc.stderr.strip()}", file=sys.stderr)
             except Exception as exc:  # noqa: BLE001
@@ -445,6 +449,7 @@ def _send_email(subject: str, body: str, to_addrs: list[str], html_body: str | N
             if username:
                 smtp.login(username, password)
             smtp.send_message(msg)
+        print(f"[auth-email] smtp ok: subject={subject!r} to={','.join(to_addrs)}", file=sys.stderr)
         return True
     except Exception as exc:  # noqa: BLE001
         print(f"[auth-email] send failed: {exc}", file=sys.stderr)
@@ -461,6 +466,10 @@ def _email_recipients(*emails: str) -> list[str]:
         seen.add(clean)
         out.append(clean)
     return out
+
+
+def _admin_notification_recipients() -> list[str]:
+    return _email_recipients(AUTH_CONTACT_EMAIL, PRIMARY_ADMIN_EMAIL, BOOTSTRAP_ADMIN_EMAIL)
 
 
 @app.on_event("startup")
@@ -992,7 +1001,7 @@ async def auth_signup(
         f"<p style=\"font-size:12px;\"><a href=\"{_public_base_url(request)}/admin/dashboard\">Open admin dashboard</a></p>"
         "</body></html>"
     )
-    _send_email(subject, body, [AUTH_CONTACT_EMAIL], html_body=html_body)
+    _send_email(subject, body, _admin_notification_recipients(), html_body=html_body)
     return templates.TemplateResponse(
         request=request,
         name="signup.html",
@@ -1038,7 +1047,7 @@ def auth_approve_access(
             status_code=400,
         )
     approved_email = str(approved_user.get("email") or "").strip()
-    recipients = _email_recipients(approved_email, AUTH_CONTACT_EMAIL)
+    recipients = _email_recipients(approved_email, *_admin_notification_recipients())
     if recipients:
         _send_email(
             "PrPCScreen access approved",
@@ -1088,7 +1097,7 @@ def admin_approve_access_request(request_id: int, request: Request) -> RedirectR
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     approved_email = str(approved_user.get("email") or "").strip()
-    recipients = _email_recipients(approved_email, AUTH_CONTACT_EMAIL)
+    recipients = _email_recipients(approved_email, *_admin_notification_recipients())
     if recipients:
         _send_email(
             "PrPCScreen access approved",
@@ -1113,11 +1122,12 @@ def admin_reject_access_request(request_id: int, request: Request) -> RedirectRe
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     rejected_email = str(rejected_user.get("email") or "").strip()
-    if rejected_email:
+    recipients = _email_recipients(rejected_email, *_admin_notification_recipients())
+    if recipients:
         _send_email(
             "PrPCScreen access request update",
             "Your access request was not approved.",
-            [rejected_email],
+            recipients,
         )
     return RedirectResponse(url="/admin/access-requests", status_code=303)
 
@@ -1135,6 +1145,48 @@ def admin_block_user(request: Request, username: str = Form(default="")) -> Redi
     updated = metadata_store.set_user_status_by_username(target, status="rejected", clear_admin=True)
     if not updated:
         raise HTTPException(status_code=404, detail="Target user not found.")
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
+
+
+@app.post("/admin/users/approve")
+def admin_approve_user(request: Request, username: str = Form(default="")) -> RedirectResponse:
+    actor = _require_primary_admin(request)
+    target = username.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Missing target user.")
+    updated = metadata_store.approve_user_by_username(target, approved_by=str(actor.get("username") or "admin"))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Target user not found.")
+    approved_user = metadata_store.get_user_by_username(target) or {}
+    approved_email = str(approved_user.get("email") or "").strip()
+    recipients = _email_recipients(approved_email, *_admin_notification_recipients())
+    if recipients:
+        _send_email(
+            "PrPCScreen access approved",
+            "Your account has been approved. You can now log in at /auth/login.",
+            recipients,
+        )
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
+
+
+@app.post("/admin/users/restore")
+def admin_restore_user(request: Request, username: str = Form(default="")) -> RedirectResponse:
+    actor = _require_primary_admin(request)
+    target = username.strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Missing target user.")
+    updated = metadata_store.approve_user_by_username(target, approved_by=str(actor.get("username") or "admin"))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Target user not found.")
+    restored_user = metadata_store.get_user_by_username(target) or {}
+    restored_email = str(restored_user.get("email") or "").strip()
+    recipients = _email_recipients(restored_email, *_admin_notification_recipients())
+    if recipients:
+        _send_email(
+            "PrPCScreen access restored",
+            "Your account access has been restored. You can now log in at /auth/login.",
+            recipients,
+        )
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
@@ -1487,7 +1539,7 @@ def api_auth_signup(body: SignupRequest) -> dict[str, Any]:
         f"<p style=\"font-size:12px;\"><a href=\"{_public_base_url(None)}/admin/dashboard\">Open admin dashboard</a></p>"
         "</body></html>"
     )
-    _send_email(f"PrPCScreen access request: {created_email}", text_body, [AUTH_CONTACT_EMAIL], html_body=html_body)
+    _send_email(f"PrPCScreen access request: {created_email}", text_body, _admin_notification_recipients(), html_body=html_body)
     return {"ok": True, "request_id": created.get("request_id")}
 
 
