@@ -785,7 +785,7 @@ def write_interactive_volcano_html(
         "      <select id=\"top-mode\">\n"
         "        <option value=\"effect_balanced\">Largest |effect| (balanced +/-)</option>\n"
         "        <option value=\"smallest_p\">Smallest p-value</option>\n"
-        "        <option value=\"combined\">Strongest combo |effect| * -log10(p)</option>\n"
+        "        <option value=\"combined\" selected>Strongest combo |effect| * -log10(p)</option>\n"
         "      </select>\n"
         "      <select id=\"top-n\">\n"
         "        <option value=\"10\">Top 10</option>\n"

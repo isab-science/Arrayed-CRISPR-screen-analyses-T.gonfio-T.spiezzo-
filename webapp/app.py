@@ -818,6 +818,7 @@ def _build_steps(req: RunRequest) -> tuple[list[tuple[str, list[str]]], dict[str
                     str(fig_dir / "genomic_skyline_meanlog2fc.png"),
                     "--sheet",
                     req.sheet,
+                    "--interactive-only",
                 ],
             ),
         ]
@@ -1497,6 +1498,7 @@ def api_figures(request: Request, output_dir: str = DEFAULT_OUTPUT_DIR) -> dict[
 
     hidden_legacy_names = {
         "candidate_flashlight_ranked_meanlog2.png",
+        "genomic_skyline_meanlog2fc.png",
         "plate_heatmap_raw_rep1.png",
         "plate_heatmap_raw_rep1_interactive.html",
     }

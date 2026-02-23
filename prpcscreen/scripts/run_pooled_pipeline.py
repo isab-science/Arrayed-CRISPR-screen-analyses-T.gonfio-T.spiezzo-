@@ -164,6 +164,7 @@ def run_pipeline_cli() -> None:
                     str(figures_dir / "genomic_skyline_meanlog2fc.png"),
                     "--sheet",
                     args.skyline_sheet,
+                    "--interactive-only",
                 ]
                 + (["--debug"] if debug_enabled else []),
             )

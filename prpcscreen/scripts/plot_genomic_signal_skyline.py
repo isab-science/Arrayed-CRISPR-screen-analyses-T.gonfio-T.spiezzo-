@@ -221,6 +221,7 @@ def render_chromosome_signal_map(
     input_excel: str,
     sheet: str,
     output_png: str,
+    interactive_only: bool = False,
     debug_enabled: bool = False,
 ) -> None:
     # Load and normalize expected input column names.
@@ -280,9 +281,12 @@ def render_chromosome_signal_map(
     ax.grid(axis="y", alpha=0.2)
 
     Path(output_png).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_png, dpi=200, bbox_inches="tight")
+    if not interactive_only:
+        fig.savefig(output_png, dpi=200, bbox_inches="tight")
+        debug_log(f"Wrote skyline figure: {output_png}", debug_enabled)
+    else:
+        Path(output_png).unlink(missing_ok=True)
     plt.close(fig)
-    debug_log(f"Wrote skyline figure: {output_png}", debug_enabled)
 
     color_by_chrom = {chrom: palette[i % 2] for i, chrom in enumerate(chrom_order)}
     plot_source = data[["gene", "x", "log2fc", "chrom", "_sublibrary"]].copy()
@@ -540,6 +544,11 @@ def run_skyline_cli() -> None:
     parser.add_argument("output_png", nargs="?", help="Output PNG path (required unless --validate-only is set).")
     parser.add_argument("--sheet", default="skylineplot2")
     parser.add_argument(
+        "--interactive-only",
+        action="store_true",
+        help="Generate interactive HTML only and skip static PNG creation.",
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Validate workbook/sheet compatibility for skyline plotting and exit.",
@@ -567,6 +576,7 @@ def run_skyline_cli() -> None:
             args.input_excel,
             args.sheet,
             args.output_png,
+            interactive_only=args.interactive_only,
             debug_enabled=debug_enabled,
         )
     except Exception as exc:  # noqa: BLE001
