@@ -4,6 +4,8 @@ let currentRunId = null;
 let currentLogIndex = 0;
 let pollTimer = null;
 let figuresUnlocked = false;
+let latestFiguresByName = new Map();
+let currentPreviewFigure = null;
 const MODE_ARRAYED = "arrayed";
 const MODE_POOLED = "pooled";
 const SETUP_COOKIE_NAME = "prpcscreen_setup";
@@ -24,23 +26,23 @@ const SETUP_INPUT_IDS = [
 ];
 
 const FIGURE_LABELS = {
-  "candidate_volcano_interactive.html": "Candidate volcano (interactive)",
+  "candidate_volcano_interactive.html": "Candidate volcano",
   "candidate_volcano_meanlog2_pvalue.png": "Candidate volcano (static, legacy)",
-  "candidate_flashlight_ranked_meanlog2_interactive.html": "Candidate ranking flashlight (interactive)",
-  "distribution_log2fc_rep1_interactive.html": "Distribution histogram (Log2FC rep1, interactive)",
+  "candidate_flashlight_ranked_meanlog2_interactive.html": "Candidate ranking flashlight",
+  "distribution_log2fc_rep1_interactive.html": "Distribution histogram (Log2FC rep1)",
   "distribution_log2fc_rep1.png": "Distribution histogram (Log2FC rep1, static, legacy)",
-  "candidate_flashlight_ranked_meanlog2.png": "Candidate ranking flashlight (Mean log2)",
-  "genomic_skyline_meanlog2fc_interactive.html": "Genomic skyline (interactive)",
+  "genomic_skyline_meanlog2fc_interactive.html": "Genomic skyline",
   "genomic_skyline_meanlog2fc.png": "Genomic skyline (Mean log2FC)",
-  "grouped_boxplot_raw_rep1_interactive.html": "Grouped violin/box plot (interactive)",
+  "grouped_boxplot_raw_rep1_interactive.html": "Grouped violin/box plot",
   "grouped_boxplot_raw_rep1.png": "Grouped violin/box plot (Raw replicate 1)",
-  "plate_heatmap_raw_rep1_interactive.html": "Plate heatmap (interactive)",
-  "plate_heatmap_raw_rep1.png": "Plate heatmap (Raw replicate 1)",
-  "plate_qc_ssmd_controls_interactive.html": "Plate quality controls (interactive)",
+  "plate_heatmap_replicates_interactive.html": "Plate heatmap (rep1, rep2, diff)",
+  "plate_heatmap_replicates.png": "Plate heatmap (rep1, rep2, diff)",
+  "plate_heatmap_replicates_collection.svg": "Plate heatmap collection (rep1, rep2, diff, SVG)",
+  "plate_qc_ssmd_controls_interactive.html": "Plate quality controls",
   "plate_qc_ssmd_controls.png": "Plate quality controls (SSMD)",
-  "plate_well_series_raw_rep1_interactive.html": "Plate-well trajectory (interactive)",
+  "plate_well_series_raw_rep1_interactive.html": "Plate-well trajectory",
   "plate_well_series_raw_rep1.png": "Plate-well trajectory (Raw replicate 1)",
-  "replicate_agreement_log2fc_interactive.html": "Replicate agreement (interactive)",
+  "replicate_agreement_log2fc_interactive.html": "Replicate agreement",
   "replicate_agreement_log2fc.png": "Replicate agreement (Log2FC)",
 };
 
@@ -53,22 +55,57 @@ function toTitleCaseWords(text) {
 }
 
 function fallbackFigureLabel(filename, kind) {
-  const base = filename.replace(/\.(png|html?)$/i, "");
+  const base = filename.replace(/\.(png|svg|html?)$/i, "");
   const normalized = base
     .replace(/[_-]+/g, " ")
     .replace(/\blog2fc\b/gi, "log2FC")
     .replace(/\bssmd\b/gi, "SSMD")
     .replace(/\brep(\d+)\b/gi, "replicate $1");
-  let label = toTitleCaseWords(normalized);
-  if (kind === "html" && !/interactive/i.test(label)) {
-    label += " (interactive)";
-  }
-  return label;
+  return toTitleCaseWords(normalized);
+}
+
+function cleanFigureLabel(label) {
+  return String(label || "")
+    .replace(/\s*\(interactive\)\s*/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function figureDisplayLabel(figure) {
   const key = (figure.name || "").toLowerCase();
-  return FIGURE_LABELS[key] || fallbackFigureLabel(figure.name || "", figure.kind || "");
+  const rawLabel = FIGURE_LABELS[key] || fallbackFigureLabel(figure.name || "", figure.kind || "");
+  return cleanFigureLabel(rawLabel);
+}
+
+function interactiveTargetForFigure(figure, byName) {
+  if (!figure || !figure.name) return null;
+  if (figure.kind === "html") return figure;
+  const lower = figure.name.toLowerCase();
+  const base = lower.replace(/\.(png|svg|html?)$/i, "");
+  const candidates = [
+    `${base}_interactive.html`,
+    `${base}.html`,
+  ];
+  if (base.endsWith("_collection")) {
+    const noCollection = base.replace(/_collection$/, "");
+    candidates.push(`${noCollection}_interactive.html`);
+  }
+  for (const name of candidates) {
+    const found = byName.get(name);
+    if (found && found.kind === "html") {
+      return found;
+    }
+  }
+  return null;
+}
+
+function figureMenuSortKey(figure) {
+  const name = String(figure?.name || "").toLowerCase();
+  if (name === "plate_heatmap_replicates_collection.svg") {
+    return [2, name];
+  }
+  const isInteractive = (figure?.kind || "") === "html" && name.includes("interactive");
+  return [isInteractive ? 0 : 1, name];
 }
 
 function setStatus(text, cls) {
@@ -91,6 +128,23 @@ function setPreviewState(item = null) {
   const preview = el("preview");
   const frame = el("preview_frame");
   const empty = el("preview_empty");
+  const openCurrentBtn = el("open_current_interactive");
+  currentPreviewFigure = item || null;
+  const currentInteractive = interactiveTargetForFigure(currentPreviewFigure, latestFiguresByName);
+
+  if (openCurrentBtn) {
+    if (currentInteractive && currentInteractive.url) {
+      openCurrentBtn.disabled = false;
+      openCurrentBtn.title = `Open interactive file: ${currentInteractive.name}`;
+      openCurrentBtn.onclick = () => {
+        window.open(currentInteractive.url, "_blank", "noopener,noreferrer");
+      };
+    } else {
+      openCurrentBtn.disabled = true;
+      openCurrentBtn.title = "No interactive version available for this figure.";
+      openCurrentBtn.onclick = null;
+    }
+  }
 
   if (item && item.url) {
     if (item.kind === "html") {
@@ -448,24 +502,50 @@ async function refreshFigures() {
   const data = await resp.json();
   const list = el("figures");
   list.innerHTML = "";
-  data.figures.forEach((f) => {
+  const byName = new Map(
+    (data.figures || []).map((item) => [String(item.name || "").toLowerCase(), item])
+  );
+  latestFiguresByName = byName;
+  const orderedFigures = [...(data.figures || [])].sort((a, b) => {
+    const ka = figureMenuSortKey(a);
+    const kb = figureMenuSortKey(b);
+    return ka[0] - kb[0] || ka[1].localeCompare(kb[1]);
+  });
+  orderedFigures.forEach((f) => {
     const li = document.createElement("li");
-    const btn = document.createElement("button");
+    li.className = "figure-entry";
+
+    const previewBtn = document.createElement("button");
     const label = figureDisplayLabel(f);
-    const isInteractive = f.kind === "html";
-    btn.textContent = isInteractive ? `${label} - this takes some time` : label;
-    btn.title = isInteractive
-      ? `File: ${f.name}\nThis takes some time to open.`
-      : `File: ${f.name}`;
-    btn.type = "button";
-    btn.addEventListener("click", () => {
+    previewBtn.className = "preview-btn";
+    previewBtn.textContent = label;
+    previewBtn.title = `File: ${f.name}`;
+    previewBtn.type = "button";
+    previewBtn.addEventListener("click", () => {
       setPreviewState(f);
     });
-    li.appendChild(btn);
+
+    const interactiveTarget = interactiveTargetForFigure(f, byName);
+    const openBtn = document.createElement("button");
+    openBtn.className = "secondary open-interactive-btn";
+    openBtn.textContent = "Open Interactive";
+    openBtn.type = "button";
+    if (interactiveTarget && interactiveTarget.url) {
+      openBtn.title = `Open interactive file: ${interactiveTarget.name}`;
+      openBtn.addEventListener("click", () => {
+        window.open(interactiveTarget.url, "_blank", "noopener,noreferrer");
+      });
+    } else {
+      openBtn.disabled = true;
+      openBtn.title = "No interactive version available for this figure.";
+    }
+
+    li.appendChild(previewBtn);
+    li.appendChild(openBtn);
     list.appendChild(li);
   });
-  if (data.figures.length > 0) {
-    setPreviewState(data.figures[0]);
+  if (orderedFigures.length > 0) {
+    setPreviewState(orderedFigures[0]);
   } else {
     setPreviewState(null);
   }

@@ -6,7 +6,7 @@
   <title>Automated CRISPR Screen Analysis</title>
   <link rel="icon" href="/static/favicon.ico?v=20260221">
   <link rel="apple-touch-icon" href="/static/favicon.ico?v=20260221">
-  <link rel="stylesheet" href="/static/style.css?v=20260222e">
+  <link rel="stylesheet" href="/static/style.css?v=20260223k">
 </head>
 <body>
   <main class="layout">
@@ -76,8 +76,8 @@
         <label class="arrayed-only">Skip GLO
           <input id="skip_glo" type="number" value="{{ defaults.skip_glo }}" />
         </label>
-        <label class="arrayed-only">Heatmap plate
-          <input id="heatmap_plate" value="{{ defaults.heatmap_plate }}" />
+        <label class="arrayed-only">Heatmap plate selector (compatibility)
+          <input id="heatmap_plate" value="{{ defaults.heatmap_plate }}" placeholder="all" />
         </label>
       </div>
       <p id="mode_note" class="mode-note"></p>
@@ -97,7 +97,10 @@
           <li><code>Genomics XLSX</code>: required for arrayed mode, optional for pooled mode.</li>
           <li><code>Skyline sheet</code> is auto-selected internally from compatible worksheets.</li>
           <li><code>Skyline sublibrary</code> is now a dropdown in the interactive skyline figure controls.</li>
-          <li><code>Heatmap plate</code>: use one number (<code>1</code>), a range (<code>1-4</code>), a series (<code>1,2,6</code>), or <code>all</code>.</li>
+          <li><code>Heatmap</code>: exported as one long figure containing all complete plates, one row per plate with three panels (replicate 1, replicate 2, rep1 - rep2).</li>
+          <li><code>Heatmap plate selector</code> is retained for compatibility, but current export behavior is all plates.</li>
+          <li>Difference panels use their own color scale (separate from raw-value scales).</li>
+          <li>When multiple heatmap plates are selected, one combined SVG is exported containing all requested plates, each with rep1/rep2/diff panels.</li>
           <li>Outputs are written to <code>output_dir</code> and <code>output_dir/figures</code>.</li>
           <li>For stable long runs, start uvicorn without <code>--reload</code> (auto-reload can restart server mid-run).</li>
         </ul>
@@ -108,8 +111,13 @@
     </section>
 
     <section class="panel preview-panel">
-      <h2>Generated Figures</h2>
-      <button id="refresh_figs" class="secondary">Refresh Figures</button>
+      <div class="preview-toolbar">
+        <h2>Generated Figures</h2>
+        <div class="preview-toolbar-actions">
+          <button id="open_current_interactive" class="secondary" type="button" disabled>Open Current Interactive</button>
+          <button id="refresh_figs" class="secondary">Refresh Figures</button>
+        </div>
+      </div>
       <ul id="figures" class="figures"></ul>
       <div id="preview_empty" class="preview-empty">
         <p>No figures shown yet.</p>
@@ -119,6 +127,6 @@
       <iframe id="preview_frame" title="Interactive figure preview"></iframe>
     </section>
   </main>
-  <script src="/static/app.js?v=20260222h"></script>
+  <script src="/static/app.js?v=20260223k"></script>
 </body>
 </html>

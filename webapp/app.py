@@ -39,7 +39,7 @@ DEFAULT_MODE = "arrayed"
 DEFAULT_SHEET = "skylineplot2"
 DEFAULT_SKIP_FRET = 38
 DEFAULT_SKIP_GLO = 9
-DEFAULT_HEATMAP_PLATE = "1"
+DEFAULT_HEATMAP_PLATE = "all"
 VALID_MODES = {"arrayed", "pooled"}
 HEATMAP_SELECTOR_RE = re.compile(r"^\d+$|^\d+\s*-\s*\d+$|^\d+(?:\s*,\s*\d+)+$|^all$", re.IGNORECASE)
 REQUIRED_SKYLINE_COLUMNS = ("gene", "log2fc", "chrom", "pos")
@@ -803,7 +803,7 @@ def _build_steps(req: RunRequest) -> tuple[list[tuple[str, list[str]]], dict[str
                     _resolve_python(),
                     "prpcscreen/scripts/plot_spatial_and_group_views.py",
                     str(analyzed),
-                    str(fig_dir / "plate_heatmap_raw_rep1.png"),
+                    str(fig_dir / "plate_heatmap_replicates.png"),
                     str(fig_dir / "grouped_boxplot_raw_rep1.png"),
                     "--plate",
                     str(req.heatmap_plate),
@@ -1490,11 +1490,24 @@ def api_figures(request: Request, output_dir: str = DEFAULT_OUTPUT_DIR) -> dict[
 
     def _figure_sort_key(path: Path) -> tuple[int, str]:
         name = path.name.lower()
+        if name == "plate_heatmap_replicates_collection.svg":
+            return (2, name)
         is_interactive = path.suffix.lower() in {".html", ".htm"} and "interactive" in name
         return (0 if is_interactive else 1, name)
 
+    hidden_legacy_names = {
+        "candidate_flashlight_ranked_meanlog2.png",
+        "plate_heatmap_raw_rep1.png",
+        "plate_heatmap_raw_rep1_interactive.html",
+    }
     items = sorted(
-        [p for p in fig_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".html", ".htm"}],
+        [
+            p
+            for p in fig_dir.iterdir()
+            if p.is_file()
+            and p.suffix.lower() in {".png", ".svg", ".html", ".htm"}
+            and p.name.lower() not in hidden_legacy_names
+        ],
         key=_figure_sort_key,
     )
     return {
