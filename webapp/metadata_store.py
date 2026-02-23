@@ -210,6 +210,24 @@ class MetadataStore:
             ).fetchone()
         return bool(row and int(row["n"]) > 0)
 
+    def healthcheck(self) -> dict[str, Any]:
+        """Probe sqlite availability and writeability without mutating persistent data."""
+        with self._connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+            writable = True
+            error = ""
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("ROLLBACK")
+            except sqlite3.OperationalError as exc:
+                writable = False
+                error = str(exc)
+        return {
+            "db_path": str(self.db_path),
+            "writable": writable,
+            "error": error,
+        }
+
     def ensure_admin_account(self, email: str, password_hash: str, *, approved_by: str = "bootstrap") -> None:
         clean_email = self._normalized_email(email)
         if not clean_email:

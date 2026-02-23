@@ -542,6 +542,18 @@ def startup_init_metadata() -> None:
         )
 
 
+@app.get("/healthz")
+def healthz() -> dict[str, Any]:
+    try:
+        details = metadata_store.healthcheck()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"metadata healthcheck failed: {exc}") from exc
+    if not details.get("writable"):
+        reason = str(details.get("error") or "metadata DB not writable")
+        raise HTTPException(status_code=503, detail=reason)
+    return {"ok": True, "metadata": details}
+
+
 def _scan_root(root_text: str) -> dict[str, Any]:
     root = _resolve_scan_root(root_text)
     if not root.exists():
