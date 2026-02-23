@@ -109,6 +109,11 @@ def run_qc_cli() -> None:
     parser = argparse.ArgumentParser(description="Generate plate-level QC plots.")
     parser.add_argument("input_csv")
     parser.add_argument("output_png")
+    parser.add_argument(
+        "--interactive-only",
+        action="store_true",
+        help="Only export interactive HTML (skip static PNG output).",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging.")
     args = parser.parse_args()
     debug_enabled = DEBUG_ENV_DEFAULT or args.debug
@@ -123,12 +128,15 @@ def run_qc_cli() -> None:
         labels.append(str(plate_label))
     debug_log(f"Computed QC metrics for {len(rep1)} plates", debug_enabled)
 
-    # Render and persist the QC panel.
-    fig, _ = plot_plate_qualities(rep1, rep2, ylabel="SSMD controls", plate_labels=labels)
     Path(args.output_png).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.output_png, dpi=600, bbox_inches="tight")
-    plt.close(fig)
-    debug_log(f"Wrote QC figure: {args.output_png}", debug_enabled)
+    if not args.interactive_only:
+        # Render and persist the static QC panel when requested.
+        fig, _ = plot_plate_qualities(rep1, rep2, ylabel="SSMD controls", plate_labels=labels)
+        fig.savefig(args.output_png, dpi=600, bbox_inches="tight")
+        plt.close(fig)
+        debug_log(f"Wrote QC figure: {args.output_png}", debug_enabled)
+    else:
+        debug_log("Skipping static QC PNG (--interactive-only).", debug_enabled)
 
     html_path = _write_interactive_qc_html(rep1, rep2, labels, args.output_png)
     debug_log(f"Wrote interactive QC HTML: {html_path}", debug_enabled)
@@ -136,4 +144,3 @@ def run_qc_cli() -> None:
 
 if __name__ == "__main__":
     run_qc_cli()
-

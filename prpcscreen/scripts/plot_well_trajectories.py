@@ -70,6 +70,11 @@ def run_trajectory_cli() -> None:
     parser.add_argument("input_csv")
     parser.add_argument("output_png")
     parser.add_argument("--column", default="Raw_rep1")
+    parser.add_argument(
+        "--interactive-only",
+        action="store_true",
+        help="Only export interactive HTML (skip static PNG output).",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging.")
     args = parser.parse_args()
     debug_enabled = DEBUG_ENV_DEFAULT or args.debug
@@ -78,11 +83,14 @@ def run_trajectory_cli() -> None:
     df = pd.read_csv(args.input_csv)
     debug_log(f"Loaded analyzed data: {args.input_csv} ({len(df)} rows)", debug_enabled)
     debug_log(f"Using column for trajectories: {args.column}", debug_enabled)
-    fig, _ = plate_well_plot(df, use_column=args.column)
     Path(args.output_png).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.output_png, dpi=180, bbox_inches="tight")
-    plt.close(fig)
-    debug_log(f"Wrote trajectory figure: {args.output_png}", debug_enabled)
+    if not args.interactive_only:
+        fig, _ = plate_well_plot(df, use_column=args.column)
+        fig.savefig(args.output_png, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        debug_log(f"Wrote trajectory figure: {args.output_png}", debug_enabled)
+    else:
+        debug_log("Skipping static trajectory PNG (--interactive-only).", debug_enabled)
 
     html_path = _write_interactive_trajectory_html(df, args.column, args.output_png)
     debug_log(f"Wrote interactive trajectory HTML: {html_path}", debug_enabled)

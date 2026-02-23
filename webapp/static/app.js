@@ -37,14 +37,21 @@ const FIGURE_LABELS = {
   "grouped_boxplot_raw_rep1.png": "Grouped violin/box plot (Raw replicate 1)",
   "plate_heatmap_replicates_interactive.html": "Plate heatmap (rep1, rep2, diff)",
   "plate_heatmap_replicates.png": "Plate heatmap (rep1, rep2, diff)",
+  "plate_heatmap_replicates_collection_interactive.html": "Plate heatmap collection",
   "plate_heatmap_replicates_collection.svg": "Plate heatmap collection (rep1, rep2, diff, SVG)",
-  "plate_qc_ssmd_controls_interactive.html": "Plate quality controls",
-  "plate_qc_ssmd_controls.png": "Plate quality controls (SSMD)",
+  "plate_qc_ssmd_controls_interactive.html": "Plate quality control",
   "plate_well_series_raw_rep1_interactive.html": "Plate-well trajectory",
-  "plate_well_series_raw_rep1.png": "Plate-well trajectory (Raw replicate 1)",
   "replicate_agreement_log2fc_interactive.html": "Replicate agreement",
   "replicate_agreement_log2fc.png": "Replicate agreement (Log2FC)",
 };
+
+const HIDDEN_FIGURE_NAMES = new Set([
+  "plate_heatmap_replicates_collection_low.svg",
+  "plate_heatmap_replicates_collection_medium.svg",
+  "plate_heatmap_replicates_collection_high.svg",
+  "plate_qc_ssmd_controls.png",
+  "plate_well_series_raw_rep1.png",
+]);
 
 function toTitleCaseWords(text) {
   return text
@@ -502,11 +509,14 @@ async function refreshFigures() {
   const data = await resp.json();
   const list = el("figures");
   list.innerHTML = "";
+  const visibleFigures = (data.figures || []).filter(
+    (item) => !HIDDEN_FIGURE_NAMES.has(String(item.name || "").toLowerCase())
+  );
   const byName = new Map(
-    (data.figures || []).map((item) => [String(item.name || "").toLowerCase(), item])
+    visibleFigures.map((item) => [String(item.name || "").toLowerCase(), item])
   );
   latestFiguresByName = byName;
-  const orderedFigures = [...(data.figures || [])].sort((a, b) => {
+  const orderedFigures = [...visibleFigures].sort((a, b) => {
     const ka = figureMenuSortKey(a);
     const kb = figureMenuSortKey(b);
     return ka[0] - kb[0] || ka[1].localeCompare(kb[1]);

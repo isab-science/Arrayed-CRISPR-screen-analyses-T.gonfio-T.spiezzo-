@@ -402,7 +402,11 @@ def _approval_link(request_id: int, email: str, request: Request | None = None) 
 
 def _send_email(subject: str, body: str, to_addrs: list[str], html_body: str | None = None) -> bool:
     host = os.getenv("SMTP_HOST", "").strip()
-    port = int(os.getenv("SMTP_PORT", "587").strip() or "587")
+    try:
+        port = int(os.getenv("SMTP_PORT", "587").strip() or "587")
+    except ValueError:
+        print("[auth-email] invalid SMTP_PORT; using default 587", file=sys.stderr)
+        port = 587
     username = os.getenv("SMTP_USER", "").strip()
     password = os.getenv("SMTP_PASS", "").strip()
     sender = os.getenv("SMTP_FROM", "noreply@isab.science").strip() or "noreply@isab.science"
@@ -435,14 +439,14 @@ def _send_email(subject: str, body: str, to_addrs: list[str], html_body: str | N
                 print(f"[auth-email] sendmail exception: {exc}", file=sys.stderr)
         print("[auth-email] SMTP_HOST is not configured; email not sent.", file=sys.stderr)
         return False
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = ", ".join(to_addrs)
-    msg.set_content(body)
-    if html_body:
-        msg.add_alternative(html_body, subtype="html")
     try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = ", ".join(to_addrs)
+        msg.set_content(body)
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
         with smtplib.SMTP(host, port, timeout=20) as smtp:
             smtp.ehlo()
             if os.getenv("SMTP_STARTTLS", "1").strip().lower() in {"1", "true", "yes", "on"}:
@@ -746,7 +750,7 @@ def _build_steps(req: RunRequest) -> tuple[list[tuple[str, list[str]]], dict[str
             ),
             (
                 "Plate quality controls",
-                [_resolve_python(), "prpcscreen/scripts/plot_plate_health.py", str(analyzed), str(fig_dir / "plate_qc_ssmd_controls.png")],
+                [_resolve_python(), "prpcscreen/scripts/plot_plate_health.py", str(analyzed), str(fig_dir / "plate_qc_ssmd_controls.png"), "--interactive-only"],
             ),
             (
                 "Plate well trajectory plot",
@@ -757,6 +761,7 @@ def _build_steps(req: RunRequest) -> tuple[list[tuple[str, list[str]]], dict[str
                     str(fig_dir / "plate_well_series_raw_rep1.png"),
                     "--column",
                     "Raw_rep1",
+                    "--interactive-only",
                 ],
             ),
             (
@@ -1003,6 +1008,17 @@ async def auth_signup(
             name="signup.html",
             context={"error": str(exc), "notice": ""},
             status_code=400,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[auth-signup] create_access_request failed: {exc}", file=sys.stderr)
+        return templates.TemplateResponse(
+            request=request,
+            name="signup.html",
+            context={
+                "error": "Unable to submit access request right now. Please try again in a moment or contact support.",
+                "notice": "",
+            },
+            status_code=503,
         )
 
     subject = f"PrPCScreen access request: {clean_email}"
@@ -1501,6 +1517,10 @@ def api_figures(request: Request, output_dir: str = DEFAULT_OUTPUT_DIR) -> dict[
         "genomic_skyline_meanlog2fc.png",
         "plate_heatmap_raw_rep1.png",
         "plate_heatmap_raw_rep1_interactive.html",
+        "plate_heatmap_replicates_collection_low.svg",
+        "plate_heatmap_replicates_collection_medium.svg",
+        "plate_heatmap_replicates_collection_high.svg",
+        "plate_qc_ssmd_controls.png",
     }
     items = sorted(
         [
@@ -1560,6 +1580,9 @@ def api_auth_signup(body: SignupRequest) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        print(f"[api-auth-signup] create_access_request failed: {exc}", file=sys.stderr)
+        raise HTTPException(status_code=503, detail="Unable to submit access request right now.") from exc
     created_email = str(created.get("email") or "").strip().lower()
     approval_url = _approval_link(int(created.get("request_id") or 0), created_email, None)
     text_body = (

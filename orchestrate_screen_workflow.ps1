@@ -182,12 +182,12 @@ function Start-ScreenWorkflow {
         @{
             Name = "Plate quality controls"
             Script = "prpcscreen/scripts/plot_plate_health.py"
-            Arguments = @($analyzedCsv, (Join-Path $figDir "plate_qc_ssmd_controls.png"))
+            Arguments = @($analyzedCsv, (Join-Path $figDir "plate_qc_ssmd_controls.png"), "--interactive-only")
         },
         @{
             Name = "Plate well trajectory plot"
             Script = "prpcscreen/scripts/plot_well_trajectories.py"
-            Arguments = @($analyzedCsv, (Join-Path $figDir "plate_well_series_raw_rep1.png"), "--column", "Raw_rep1")
+            Arguments = @($analyzedCsv, (Join-Path $figDir "plate_well_series_raw_rep1.png"), "--column", "Raw_rep1", "--interactive-only")
         },
         @{
             Name = "Replicate agreement diagnostics"
